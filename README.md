@@ -23,13 +23,6 @@
 
 ### Главная страница
 ![Главная](https://allwebs.ru/images/2026/03/31/ea5d79c0d75018713d74acd181ba86f4.png)
-
-### Инструменты
-![Инструменты](https://via.placeholder.com/800x450/18181b/3b82f6?text=Tools+-+Global+Clean)
-
-### Глобальная очистка
-![Очистка](https://via.placeholder.com/800x450/18181b/3b82f6?text=Global+Clean+Modal](https://allwebs.ru/images/2026/03/31/9fab007b04432f34dd11d6e708519d25.png)](https://allwebs.ru/images/2026/03/31/7b7fae5fc25de99ed4c97e31a4a4570b.png)
-
 ---
 
 ## 🔧 Функционал
