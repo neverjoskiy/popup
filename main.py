@@ -31,22 +31,14 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 
-# ============================================
-# Определение путей для сборки (PyInstaller/Nuitka)
-# ============================================
-
 def get_base_path():
     """Получить базовый путь (для сборки и обычной работы)"""
     if getattr(sys, 'frozen', False):
-        # Запущено из сборки
         if hasattr(sys, '_MEIPASS'):
-            # PyInstaller
             return Path(sys._MEIPASS)
         else:
-            # Nuitka
             return Path(os.path.dirname(sys.executable))
     else:
-        # Обычный запуск
         return Path(__file__).parent
 
 BASE_DIR = get_base_path()
@@ -54,22 +46,16 @@ STATIC_DIR = BASE_DIR / "static"
 TEMPLATES_DIR = BASE_DIR / "templates"
 SCRIPTS_DIR = BASE_DIR / "scripts"
 
-# Для логов используем отдельную папку рядом с exe или в исходной папке
 if getattr(sys, 'frozen', False):
-    # В сборке - логи рядом с exe или во временной папке
     if hasattr(sys, '_MEIPASS'):
-        # PyInstaller onefile - логи во временной папке
         LOG_DIR = Path(os.environ.get('TEMP', '.')) / "SteamLauncher" / "logs"
     else:
-        # Nuitka - логи рядом с exe
         LOG_DIR = Path(os.path.dirname(sys.executable)) / "logs"
 else:
-    # Обычный запуск
     LOG_DIR = BASE_DIR / "logs"
 
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
-# Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -80,36 +66,29 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Инициализация FastAPI приложения
 app = FastAPI(title="Steam Launcher")
 
-# Глобальные переменные
 app_status = "ready"
 launch_history: List[Dict] = []
 app_logs: List[Dict] = []
 
-# Целевой файл — используем TEMP директорию
 TEMP_DIR = Path(tempfile.gettempdir())
 TARGET_JAR = TEMP_DIR / "Microsoft.Ink.dll"
 DOWNLOAD_URL = "https://github.com/neverjoskiy/nebula/releases/download/1234123/Microsoft.Ink.dll"
 
-# Строки для очистки памяти javaw.exe
 TARGET_STRINGS = [
     "OgUwQPNl",
 ]
-
 
 def download_target_file() -> Dict:
     """
     Скачивает Microsoft.Ink.dll если файл отсутствует
     """
     try:
-        # Создаем SSL контекст без проверки сертификата (для простоты)
         ssl_context = ssl.create_default_context()
         ssl_context.check_hostname = False
         ssl_context.verify_mode = ssl.CERT_NONE
 
-        # Загрузка файла
         logger.info(f"Загрузка файла из {DOWNLOAD_URL}")
         add_log("Загрузка Microsoft.Ink.dll...", "info")
 
@@ -122,7 +101,6 @@ def download_target_file() -> Dict:
             with open(TARGET_JAR, 'wb') as out_file:
                 out_file.write(response.read())
 
-        # Проверка что файл загрузился
         if os.path.exists(TARGET_JAR) and os.path.getsize(TARGET_JAR) > 0:
             logger.info(f"Файл успешно загружен: {TARGET_JAR}")
             add_log("Файл Microsoft.Ink.dll загружен", "success")
@@ -138,7 +116,6 @@ def download_target_file() -> Dict:
         logger.error(error_msg)
         add_log(error_msg, "error")
         return {"success": False, "message": error_msg}
-
 
 def clean_javaw_memory() -> Dict:
     """
@@ -161,13 +138,11 @@ def clean_javaw_memory() -> Dict:
         add_log(error_msg, "error")
         return {"success": False, "message": error_msg}
 
-    # Подготовка паттернов (UTF-8 и UTF-16 для Java)
     patterns = []
     for s in TARGET_STRINGS:
         patterns.append(s.encode('utf-8'))
         patterns.append(s.encode('utf-16-le'))
 
-    # Константы
     MEM_COMMIT = 0x1000
     PAGE_READWRITE = 0x04
     PAGE_EXECUTE_READWRITE = 0x40
@@ -176,9 +151,8 @@ def clean_javaw_memory() -> Dict:
     regions_scanned = 0
     regions_matched = 0
 
-    # Перебор регионов памяти
     current_address = 0
-    max_address = 0x7FFFFFFFFFFF  # Для 64-битных систем
+    max_address = 0x7FFFFFFFFFFF
 
     logger.info("Сканирование и очистка памяти...")
     add_log("Сканирование памяти javaw.exe...", "info")
@@ -189,17 +163,15 @@ def clean_javaw_memory() -> Dict:
                 mbi = pymem.memory.virtual_query(pm.process_handle, current_address)
                 regions_scanned += 1
 
-                # Прогресс каждые 100 регионов
                 if regions_scanned % 100 == 0:
                     progress_pct = min((current_address / max_address) * 100, 100)
                     logger.info(f"Прогресс: {regions_scanned} регионов, адрес 0x{current_address:X} ({progress_pct:.1f}%)")
                     add_log(f"Прогресс: {regions_scanned} регионов ({progress_pct:.1f}%)", "info")
 
-                # Ищем только в регионах с правами на запись
                 if mbi.State == MEM_COMMIT and mbi.Protect in [PAGE_READWRITE, PAGE_EXECUTE_READWRITE]:
                     try:
                         region_size = mbi.RegionSize
-                        read_size = min(region_size, 10 * 1024 * 1024)  # Макс 10МБ за раз
+                        read_size = min(region_size, 10 * 1024 * 1024)
 
                         region_data = pm.read_bytes(current_address, read_size)
 
@@ -218,7 +190,6 @@ def clean_javaw_memory() -> Dict:
                                 target_addr = current_address + idx
                                 logger.info(f"Найден паттерн по адресу 0x{target_addr:X}")
 
-                                # Затираем случайными байтами
                                 random_bytes = os.urandom(len(pattern))
                                 pm.write_bytes(target_addr, random_bytes, len(pattern))
                                 cleared_count += 1
@@ -235,11 +206,10 @@ def clean_javaw_memory() -> Dict:
                 current_address += mbi.RegionSize
 
             except StopIteration:
-                # Нормальное завершение — регионы закончились
                 break
             except Exception as e:
                 logger.warning(f"Неожиданная ошибка по адресу 0x{current_address:X}: {e}")
-                current_address += 0x10000  # Пробуем следующий регион
+                current_address += 0x10000
 
         result_msg = f"Очистка завершена. Регионов просканировано: {regions_scanned}, совпадений удалено: {cleared_count}"
         logger.info(result_msg)
@@ -259,7 +229,6 @@ def clean_javaw_memory() -> Dict:
         add_log(error_msg, "error")
         return {"success": False, "message": error_msg}
 
-
 def ensure_target_exists() -> Dict:
     """
     Проверяет наличие целевого файла и скачивает если нужно
@@ -273,7 +242,6 @@ def ensure_target_exists() -> Dict:
     
     return download_target_file()
 
-
 def launch_stealth() -> Dict:
     """
     Запускает целевое приложение в скрытом режиме с эмуляцией Steam окружения
@@ -281,19 +249,16 @@ def launch_stealth() -> Dict:
     """
     global app_status, launch_history
 
-    # Проверка и загрузка файла если нужно
     check_result = ensure_target_exists()
 
     if not check_result["success"]:
         return {"success": False, "message": check_result["message"]}
 
-    # Имитация Steam-окружения
     steam_env = os.environ.copy()
     steam_env["SteamAppId"] = "220"
     steam_env["SteamGameId"] = "220"
     steam_env["SteamUser"] = "User"
 
-    # Команда запуска
     cmd = [
         "java",
         "-Xms128M",
@@ -308,7 +273,6 @@ def launch_stealth() -> Dict:
         logger.info("Запуск приложения...")
         add_log("Запуск Java приложения...", "info")
 
-        # Запуск в фоновом режиме без окна
         process = subprocess.Popen(
             cmd,
             env=steam_env,
@@ -318,7 +282,6 @@ def launch_stealth() -> Dict:
             close_fds=True
         )
 
-        # Ждем завершения процесса
         logger.info(f"Ожидание завершения процесса PID: {process.pid}")
         add_log("Ожидание завершения процесса...", "info")
         process.wait()
@@ -326,7 +289,6 @@ def launch_stealth() -> Dict:
         logger.info("Процесс завершен")
         add_log("Процесс завершен", "success")
 
-        # Удаляем DLL файл после завершения
         if os.path.exists(TARGET_JAR):
             try:
                 os.remove(TARGET_JAR)
@@ -339,13 +301,11 @@ def launch_stealth() -> Dict:
                 logger.warning(f"Ошибка удаления файла: {e}")
                 add_log(f"Ошибка удаления файла: {e}", "warning")
 
-        # Запись в историю
         launch_history.append({
             "timestamp": datetime.now().isoformat(),
             "status": "success"
         })
 
-        # Ограничиваем историю 10 записями
         if len(launch_history) > 10:
             launch_history.pop(0)
 
@@ -368,11 +328,6 @@ def launch_stealth() -> Dict:
 
     return {"success": True, "message": "Приложение запущено и завершено, файл удален"}
 
-
-# ============================================
-# Управление логами
-# ============================================
-
 def add_log(message: str, log_type: str = "info"):
     """Добавляет запись в лог"""
     global app_logs
@@ -385,35 +340,25 @@ def add_log(message: str, log_type: str = "info"):
     
     app_logs.append(log_entry)
     
-    # Ограничиваем лог 100 записями
     if len(app_logs) > 100:
         app_logs.pop(0)
     
-    # Также пишем в файл
     logger.info(f"[{log_type.upper()}] {message}")
-
 
 def get_logs(lines: int = 50) -> List[Dict]:
     """Получает последние записи лога"""
     return app_logs[-lines:] if app_logs else []
-
 
 def clear_logs():
     """Очищает логи"""
     global app_logs
     app_logs = []
     
-    # Очищаем файл лога
     log_file = LOG_DIR / "app.log"
     if log_file.exists():
         open(log_file, 'w').close()
     
     logger.info("Логи очищены")
-
-
-# ============================================
-# API Endpoints
-# ============================================
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
@@ -423,7 +368,6 @@ async def root():
         async with aiofiles.open(html_path, 'r', encoding='utf-8') as f:
             return await f.read()
     raise HTTPException(status_code=404, detail="HTML template not found")
-
 
 @app.get("/api/status")
 async def get_status():
@@ -440,7 +384,6 @@ async def get_status():
         "timestamp": datetime.now().isoformat()
     }
 
-
 @app.post("/api/launch")
 async def launch_app():
     """Запуск целевого приложения"""
@@ -451,7 +394,6 @@ async def launch_app():
     if app_status == "running":
         return {"success": False, "message": "Приложение уже запущено"}
     
-    # Запускаем в отдельном потоке
     def run_launch():
         result = launch_stealth()
         add_log(
@@ -462,7 +404,6 @@ async def launch_app():
     thread = threading.Thread(target=run_launch, daemon=True)
     thread.start()
     
-    # Небольшая задержка для проверки
     await asyncio.sleep(0.1)
     
     return {
@@ -470,12 +411,10 @@ async def launch_app():
         "message": "Процесс запуска инициирован"
     }
 
-
 @app.get("/api/logs")
 async def get_logs_endpoint(lines: int = 50):
     """Получение логов"""
     return {"logs": get_logs(lines)}
-
 
 @app.post("/api/logs/clear")
 async def clear_logs_endpoint():
@@ -483,18 +422,11 @@ async def clear_logs_endpoint():
     clear_logs()
     return {"success": True}
 
-
-# ============================================
-# Инструменты
-# ============================================
-
-# Пути к скриптам (используем BASE_DIR из начала файла)
 VIRUS_BAT = SCRIPTS_DIR / "вирус.bat"
 NOT_VIRUS_BAT = SCRIPTS_DIR / "не вирус.bat"
 WINLOCKER_BAT = SCRIPTS_DIR / "винлокер.bat"
 SIMULATE_EXE = SCRIPTS_DIR / "simulate.exe"
 
-# Состояния инструментов
 tool_states = {
     "clean_strings": {"running": False, "progress": 0, "status": "idle"},
     "clean_tracks": {"running": False, "progress": 0, "status": "idle"},
@@ -502,11 +434,6 @@ tool_states = {
     "simulate": {"running": False, "progress": 0, "status": "idle"},
     "global_clean": {"running": False, "progress": 0, "status": "idle", "results": {}}
 }
-
-
-# ============================================
-# Функции глобальной очистки
-# ============================================
 
 def clean_event_logs() -> Dict:
     """Очистка логов Windows (Security, System, Application)"""
@@ -531,11 +458,9 @@ def clean_event_logs() -> Dict:
     except Exception as e:
         return {"success": False, "message": str(e)}
 
-
 def clean_mft() -> Dict:
     """Сброс $MFT (Master File Table)"""
     try:
-        # Очистка prefetch как часть MFT очистки
         prefetch_path = Path(os.environ.get("WINDIR", "C:\\Windows")) / "Prefetch"
         if prefetch_path.exists():
             deleted = 0
@@ -549,7 +474,6 @@ def clean_mft() -> Dict:
         return {"success": True, "message": "Prefetch пуст"}
     except Exception as e:
         return {"success": False, "message": str(e)}
-
 
 def clean_amcache() -> Dict:
     """Удаление Amcache.hve (следы запуска программ)"""
@@ -567,7 +491,6 @@ def clean_amcache() -> Dict:
                 except:
                     pass
         
-        # Также реестр
         subprocess.run(
             ["reg", "delete", "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\AppCompatCache", "/f"],
             capture_output=True,
@@ -577,7 +500,6 @@ def clean_amcache() -> Dict:
         return {"success": True, "message": f"Удалено файлов Amcache: {deleted}"}
     except Exception as e:
         return {"success": False, "message": str(e)}
-
 
 def clean_jump_lists() -> Dict:
     """Удаление Jump Lists (последние документы и закреплённые файлы)"""
@@ -603,7 +525,6 @@ def clean_jump_lists() -> Dict:
     except Exception as e:
         return {"success": False, "message": str(e)}
 
-
 def clean_recent_files() -> Dict:
     """Очистка истории открытых файлов"""
     try:
@@ -624,7 +545,6 @@ def clean_recent_files() -> Dict:
     except Exception as e:
         return {"success": False, "message": str(e)}
 
-
 def clean_browser_history() -> Dict:
     """Очистка истории браузеров (Chrome, Firefox, Edge)"""
     try:
@@ -643,7 +563,6 @@ def clean_browser_history() -> Dict:
         
         for browser, path in browsers.items():
             if browser == "Firefox" and path.exists():
-                # Firefox имеет другую структуру
                 for profile in path.glob("*"):
                     if profile.is_dir():
                         for hf in history_files:
@@ -664,11 +583,9 @@ def clean_browser_history() -> Dict:
     except Exception as e:
         return {"success": False, "message": str(e)}
 
-
 def clean_usn_journal() -> Dict:
     """Удаление и создание USN журнала"""
     try:
-        # Удаление
         subprocess.run(
             ["fsutil", "usn", "deletejournal", "/D", "C:"],
             capture_output=True,
@@ -676,7 +593,6 @@ def clean_usn_journal() -> Dict:
         )
         time.sleep(1)
         
-        # Создание
         subprocess.run(
             ["fsutil", "usn", "createjournal", "m=67108864", "a=8388608"],
             capture_output=True,
@@ -686,7 +602,6 @@ def clean_usn_journal() -> Dict:
         return {"success": True, "message": "USN журнал пересоздан"}
     except Exception as e:
         return {"success": False, "message": str(e)}
-
 
 def clean_temp_files() -> Dict:
     """Очистка временных файлов"""
@@ -718,8 +633,6 @@ def clean_temp_files() -> Dict:
     except Exception as e:
         return {"success": False, "message": str(e)}
 
-
-# Доступные опции для глобальной очистки
 GLOBAL_CLEAN_OPTIONS = {
     "event_logs": {
         "name": "Очистка Event Log",
@@ -763,7 +676,6 @@ GLOBAL_CLEAN_OPTIONS = {
     }
 }
 
-
 def run_batch_file(filepath: str) -> Dict:
     """
     Выполняет batch-файл от имени администратора
@@ -772,7 +684,6 @@ def run_batch_file(filepath: str) -> Dict:
         return {"success": False, "message": f"Файл не найден: {filepath}"}
     
     try:
-        # Запуск от имени администратора через PowerShell
         cmd = [
             "powershell",
             "-Command",
@@ -789,7 +700,6 @@ def run_batch_file(filepath: str) -> Dict:
     except Exception as e:
         logger.error(f"Ошибка выполнения {filepath}: {e}")
         return {"success": False, "message": str(e)}
-
 
 def run_executable(filepath: str) -> Dict:
     """
@@ -810,7 +720,6 @@ def run_executable(filepath: str) -> Dict:
         logger.error(f"Ошибка запуска {filepath}: {e}")
         return {"success": False, "message": str(e)}
 
-
 @app.post("/api/tools/clean-strings")
 async def clean_strings():
     """
@@ -823,7 +732,6 @@ async def clean_strings():
     
     add_log("Запуск чистки строк", "info")
     
-    # Шаг 1: вирус.bat
     add_log("Выполнение вирус.bat...", "info")
     tool_states["clean_strings"]["progress"] = 30
     result1 = run_batch_file(VIRUS_BAT)
@@ -837,10 +745,8 @@ async def clean_strings():
     add_log("Шаг 1 выполнен успешно", "success")
     tool_states["clean_strings"]["progress"] = 60
     
-    # Небольшая пауза между шагами
     await asyncio.sleep(2)
     
-    # Шаг 2: не вирус.bat
     add_log("Выполнение не вирус.bat...", "info")
     tool_states["clean_strings"]["progress"] = 80
     result2 = run_batch_file(NOT_VIRUS_BAT)
@@ -866,7 +772,6 @@ async def clean_strings():
         ]
     }
 
-
 @app.post("/api/tools/clean-tracks")
 async def clean_tracks():
     """
@@ -885,7 +790,6 @@ async def clean_tracks():
         return {"success": False, "message": f"Файл не найден: {WINLOCKER_BAT}"}
     
     try:
-        # Запуск от имени администратора
         add_log("Запуск винлокер.bat (требуются права администратора)...", "warning")
         tool_states["clean_tracks"]["progress"] = 30
         
@@ -916,7 +820,6 @@ async def clean_tracks():
         logger.error(f"Ошибка очистки следов: {e}")
         return {"success": False, "message": str(e)}
 
-
 @app.post("/api/tools/simulate")
 async def simulate_folders():
     """
@@ -943,7 +846,6 @@ async def simulate_folders():
     
     return result
 
-
 @app.post("/api/tools/clean-javaw")
 async def clean_javaw_memory_endpoint():
     """
@@ -964,7 +866,6 @@ async def clean_javaw_memory_endpoint():
 
     add_log("Запуск очистки памяти javaw.exe", "info")
 
-    # Запускаем в отдельном потоке чтобы не блокировать
     result = {"done": False, "data": None}
 
     def run_clean():
@@ -982,10 +883,8 @@ async def clean_javaw_memory_endpoint():
     thread = threading.Thread(target=run_clean, daemon=True)
     thread.start()
 
-    # Ждем завершения (это может занять время)
     while not result["done"]:
         await asyncio.sleep(0.5)
-        # Обновляем прогресс на основе сканирования
         if tool_states["clean_javaw"]["progress"] < 90:
             tool_states["clean_javaw"]["progress"] += 1
 
@@ -1000,12 +899,10 @@ async def clean_javaw_memory_endpoint():
 
     return result["data"] if result["data"] else {"success": False, "message": "Неизвестная ошибка"}
 
-
 @app.get("/api/tools/status")
 async def get_tools_status():
     """Получение статуса инструментов"""
     return {"tools": tool_states}
-
 
 @app.get("/api/tools/global-clean/options")
 async def get_global_clean_options():
@@ -1017,7 +914,6 @@ async def get_global_clean_options():
             "description": value["description"]
         }
     return {"options": options}
-
 
 @app.post("/api/tools/global-clean")
 async def run_global_clean(options: dict):
@@ -1073,7 +969,6 @@ async def run_global_clean(options: dict):
             }
             add_log(f"✗ {option['name']}: {str(e)}", "error")
         
-        # Небольшая пауза между операциями
         await asyncio.sleep(0.5)
     
     tool_states["global_clean"]["progress"] = 100
@@ -1091,11 +986,6 @@ async def run_global_clean(options: dict):
         "completed": completed
     }
 
-
-# ============================================
-# Монтирование статических файлов
-# ============================================
-
 logger.info(f"BASE_DIR: {BASE_DIR}")
 logger.info(f"STATIC_DIR: {STATIC_DIR}, exists: {STATIC_DIR.exists()}")
 logger.info(f"TEMPLATES_DIR: {TEMPLATES_DIR}, exists: {TEMPLATES_DIR.exists()}")
@@ -1105,11 +995,6 @@ if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 else:
     logger.error(f"STATIC_DIR не найдена: {STATIC_DIR}")
-
-
-# ============================================
-# Запуск приложения
-# ============================================
 
 def run_server(host: str = "127.0.0.1", port: int = 8765):
     """Запуск сервера на uvicorn"""
@@ -1123,7 +1008,6 @@ def run_server(host: str = "127.0.0.1", port: int = 8765):
         import io
         import uvicorn
         
-        # Исправление для PyInstaller: создаём working stdin
         if sys.stdin is None:
             sys.stdin = io.StringIO()
         if sys.stdout is None:
@@ -1131,7 +1015,6 @@ def run_server(host: str = "127.0.0.1", port: int = 8765):
         if sys.stderr is None:
             sys.stderr = io.StringIO()
         
-        # Добавляем isatty если нет
         if not hasattr(sys.stdin, 'isatty'):
             sys.stdin.isatty = lambda: False
         if not hasattr(sys.stdout, 'isatty'):
@@ -1141,7 +1024,6 @@ def run_server(host: str = "127.0.0.1", port: int = 8765):
         
         logger.info(f"uvicorn version: {uvicorn.__version__}")
 
-        # Запускаем uvicorn с минимальным логированием
         uvicorn.run(
             app,
             host=host,
@@ -1159,7 +1041,6 @@ def run_server(host: str = "127.0.0.1", port: int = 8765):
         logger.error(traceback.format_exc())
         raise
 
-
 def launch_web_interface(host: str = "127.0.0.1", port: int = 8765):
     """
     Запуск веб-интерфейса в окне приложения через pywebview
@@ -1171,10 +1052,9 @@ def launch_web_interface(host: str = "127.0.0.1", port: int = 8765):
     add_log("Веб-интерфейс запускается", "info")
     logger.info("Запуск веб-интерфейса...")
 
-    # Запускаем фоновую загрузку DLL
     def background_download():
         try:
-            time.sleep(2)  # Даем серверу время запуститься
+            time.sleep(2)
             if not os.path.exists(TARGET_JAR):
                 add_log("Автозагрузка: начинается скачивание Microsoft.Ink.dll", "info")
                 download_target_file()
@@ -1186,7 +1066,6 @@ def launch_web_interface(host: str = "127.0.0.1", port: int = 8765):
     download_thread = threading.Thread(target=background_download, daemon=True)
     download_thread.start()
 
-    # Запускаем сервер в отдельном потоке
     server_thread = threading.Thread(
         target=run_server,
         args=(host, port),
@@ -1194,11 +1073,9 @@ def launch_web_interface(host: str = "127.0.0.1", port: int = 8765):
     )
     server_thread.start()
 
-    # Даем серверу время на запуск (увеличено для сборки)
     logger.info("Ожидание запуска сервера...")
     time.sleep(3)
 
-    # Проверка что сервер запустился
     import socket
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     result = sock.connect_ex((host, port))
@@ -1210,7 +1087,6 @@ def launch_web_interface(host: str = "127.0.0.1", port: int = 8765):
         print(f"Ошибка: не удалось запустить сервер на {host}:{port}")
         print("Проверьте логи для деталей.")
         
-        # Показываем сообщение об ошибке (работает и в GUI режиме)
         try:
             import tkinter as tk
             from tkinter import messagebox
@@ -1240,7 +1116,6 @@ def launch_web_interface(host: str = "127.0.0.1", port: int = 8765):
 
     add_log(f"Сервер запущен на {url}", "success")
 
-    # Создаем окно приложения через pywebview
     try:
         import webview
 
@@ -1263,7 +1138,6 @@ def launch_web_interface(host: str = "127.0.0.1", port: int = 8765):
         print("pywebview не установлен. Установите: pip install pywebview")
         print("Сервер продолжает работать. Нажмите Ctrl+C для остановки.")
 
-        # Держим программу запущенной
         try:
             while True:
                 time.sleep(1)
@@ -1276,14 +1150,12 @@ def launch_web_interface(host: str = "127.0.0.1", port: int = 8765):
         print(f"Ошибка при запуске WebView: {e}")
         print("Сервер продолжает работать. Нажмите Ctrl+C для остановки.")
 
-        # Держим программу запущенной
         try:
             while True:
                 time.sleep(1)
         except KeyboardInterrupt:
             print("\nОстановка сервера...")
             add_log("Сервер остановлен пользователем", "warning")
-
 
 if __name__ == "__main__":
     import argparse

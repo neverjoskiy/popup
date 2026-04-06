@@ -3,11 +3,8 @@ import pymem.process
 import ctypes
 import os
 
-# === SETTINGS ===
-# сюда вписывать все, че надо почистить
 TARGET_STRINGS = [
     "OgUwQPNl",
-    # можно добавить другие строки через запятую
 ]
 
 def is_admin():
@@ -28,13 +25,11 @@ def wipe_memory():
         print("[-] error: process javaw.exe not found.")
         return
 
-    # подготовка паттернов (дефолт строка и UTF-16 для Java)
     patterns = []
     for s in TARGET_STRINGS:
         patterns.append(s.encode('utf-8'))
         patterns.append(s.encode('utf-16-le'))
 
-    # константы
     MEM_COMMIT = 0x1000
     MEM_DECOMMIT = 0x4000
     PAGE_READWRITE = 0x04
@@ -44,9 +39,7 @@ def wipe_memory():
     regions_scanned = 0
     regions_matched = 0
 
-    # перебор регионов памяти
     current_address = 0
-    # максималка для 64-битных систем
     max_address = 0x7FFFFFFFFFFF
 
     print("[*] Scanning and cleaning...")
@@ -56,18 +49,15 @@ def wipe_memory():
             mbi = pymem.memory.virtual_query(pm.process_handle, current_address)
             regions_scanned += 1
 
-            # дебаг: показываем прогресс каждые 100 регионов
             if regions_scanned % 100 == 0:
                 print(f"[*] Progress: {regions_scanned} regions, currently at 0x{current_address:X}")
 
-            # ищет только в регах с правами на запись (RW или RWX)
             if mbi.State == MEM_COMMIT and \
                mbi.Protect in [PAGE_READWRITE, PAGE_EXECUTE_READWRITE]:
 
                 try:
-                    # читаем кусками, т.к. регион может быть огромным
                     region_size = mbi.RegionSize
-                    read_size = min(region_size, 10 * 1024 * 1024)  # макс 10МБ за раз
+                    read_size = min(region_size, 10 * 1024 * 1024)
                     
                     region_data = pm.read_bytes(current_address, read_size)
                     
@@ -77,7 +67,6 @@ def wipe_memory():
 
                     found_in_region = 0
                     for pattern in patterns:
-                        # используем bytes.find для простого поиска вместо regex
                         start = 0
                         while True:
                             idx = region_data.find(pattern, start)
@@ -87,12 +76,11 @@ def wipe_memory():
                             target_addr = current_address + idx
                             print(f"[!] Found pattern at 0x{target_addr:X}")
 
-                            # затираем рандом байтами той же длины
                             random_bytes = os.urandom(len(pattern))
                             pm.write_bytes(target_addr, random_bytes, len(pattern))
                             cleared_count += 1
                             found_in_region += 1
-                            start = idx + len(pattern)  # не перекрываем совпадения
+                            start = idx + len(pattern)
                     
                     if found_in_region > 0:
                         regions_matched += 1
@@ -103,11 +91,9 @@ def wipe_memory():
             
             current_address += mbi.RegionSize
         except StopIteration:
-            # нормальное завершение — регионы закончились
             break
         except Exception as e:
             print(f"[-] Unexpected error at 0x{current_address:X}: {e}")
-            # пробуем следующий регион (шаг 64КБ)
             current_address += 0x10000
 
     print(f"[+] Done! Scanned regions: {regions_scanned}")

@@ -21,22 +21,14 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 
-# ============================================
-# Определение путей для сборки (PyInstaller/Nuitka)
-# ============================================
-
 def get_base_path():
     """Получить базовый путь (для сборки и обычной работы)"""
     if getattr(sys, 'frozen', False):
-        # Запущено из сборки
         if hasattr(sys, '_MEIPASS'):
-            # PyInstaller
             return Path(sys._MEIPASS)
         else:
-            # Nuitka
             return Path(os.path.dirname(sys.executable))
     else:
-        # Обычный запуск
         return Path(__file__).parent
 
 BASE_DIR = get_base_path()
@@ -44,22 +36,16 @@ STATIC_DIR = BASE_DIR / "static"
 TEMPLATES_DIR = BASE_DIR / "templates"
 SCRIPTS_DIR = BASE_DIR / "scripts"
 
-# Для логов используем отдельную папку рядом с exe или в исходной папке
 if getattr(sys, 'frozen', False):
-    # В сборке - логи рядом с exe или во временной папке
     if hasattr(sys, '_MEIPASS'):
-        # PyInstaller onefile - логи во временной папке
         LOG_DIR = Path(os.environ.get('TEMP', '.')) / "NoxumClean" / "logs"
     else:
-        # Nuitka - логи рядом с exe
         LOG_DIR = Path(os.path.dirname(sys.executable)) / "logs"
 else:
-    # Обычный запуск
     LOG_DIR = BASE_DIR / "logs"
 
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
-# Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -70,13 +56,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Инициализация FastAPI приложения
 app = FastAPI(title="NoxumClean")
 
-# Глобальные переменные
 app_logs: List[Dict] = []
 
-# Статистика очистки
 clean_stats = {
     "total_cleaned_bytes": 0,
     "total_operations": 0,
@@ -118,14 +101,12 @@ def add_clean_stats(bytes_cleaned: int, operation_type: str):
         "bytes_cleaned": bytes_cleaned,
         "type": operation_type
     })
-    # Храним только последние 50 операций
     if len(clean_stats["history"]) > 50:
         clean_stats["history"] = clean_stats["history"][-50:]
     save_stats()
 
 load_stats()
 
-# Статистика очистки
 clean_stats = {
     "total_cleaned_bytes": 0,
     "total_operations": 0,
@@ -167,17 +148,11 @@ def add_clean_stats(bytes_cleaned: int, operation_type: str):
         "bytes_cleaned": bytes_cleaned,
         "type": operation_type
     })
-    # Храним только последние 50 операций
     if len(clean_stats["history"]) > 50:
         clean_stats["history"] = clean_stats["history"][-50:]
     save_stats()
 
 load_stats()
-
-
-# ============================================
-# Управление логами
-# ============================================
 
 def add_log(message: str, log_type: str = "info"):
     """Добавляет запись в лог"""
@@ -191,35 +166,25 @@ def add_log(message: str, log_type: str = "info"):
 
     app_logs.append(log_entry)
 
-    # Ограничиваем лог 100 записями
     if len(app_logs) > 100:
         app_logs.pop(0)
 
-    # Также пишем в файл
     logger.info(f"[{log_type.upper()}] {message}")
-
 
 def get_logs(lines: int = 50) -> List[Dict]:
     """Получает последние записи лога"""
     return app_logs[-lines:] if app_logs else []
-
 
 def clear_logs():
     """Очищает логи"""
     global app_logs
     app_logs = []
 
-    # Очищаем файл лога
     log_file = LOG_DIR / "app.log"
     if log_file.exists():
         open(log_file, 'w').close()
 
     logger.info("Логи очищены")
-
-
-# ============================================
-# API Endpoints
-# ============================================
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
@@ -230,7 +195,6 @@ async def root():
             return await f.read()
     raise HTTPException(status_code=404, detail="HTML template not found")
 
-
 @app.get("/api/status")
 async def get_status():
     """Получение текущего статуса приложения"""
@@ -240,19 +204,16 @@ async def get_status():
         "version": "1.0.0-beta"
     }
 
-
 @app.get("/api/logs")
 async def get_logs_endpoint(lines: int = 50):
     """Получение логов"""
     return {"logs": get_logs(lines)}
-
 
 @app.post("/api/logs/clear")
 async def clear_logs_endpoint():
     """Очистка логов"""
     clear_logs()
     return {"success": True}
-
 
 @app.get("/api/stats")
 async def get_stats():
@@ -290,35 +251,22 @@ async def get_stats():
         }
     }
 
-
 @app.get("/api/tools/status")
 async def get_tools_status():
     """Получение статуса инструментов"""
     return {"tools": tool_states}
 
-
-# ============================================
-# Инструменты
-# ============================================
-
-# Пути к скриптам (используем BASE_DIR из начала файла)
 VIRUS_BAT = SCRIPTS_DIR / "вирус.bat"
 NOT_VIRUS_BAT = SCRIPTS_DIR / "не вирус.bat"
 WINLOCKER_BAT = SCRIPTS_DIR / "винлокер.bat"
 SIMULATE_EXE = SCRIPTS_DIR / "simulate.exe"
 
-# Состояния инструментов
 tool_states = {
     "clean_strings": {"running": False, "progress": 0, "status": "idle"},
     "clean_tracks": {"running": False, "progress": 0, "status": "idle"},
     "simulate": {"running": False, "progress": 0, "status": "idle"},
     "global_clean": {"running": False, "progress": 0, "status": "idle", "results": {}}
 }
-
-
-# ============================================
-# Функции глобальной очистки
-# ============================================
 
 def clean_event_logs() -> Dict:
     """Очистка логов Windows (Security, System, Application)"""
@@ -343,11 +291,9 @@ def clean_event_logs() -> Dict:
     except Exception as e:
         return {"success": False, "message": str(e)}
 
-
 def clean_mft() -> Dict:
     """Сброс $MFT (Master File Table)"""
     try:
-        # Очистка prefetch как часть MFT очистки
         prefetch_path = Path(os.environ.get("WINDIR", "C:\\Windows")) / "Prefetch"
         if prefetch_path.exists():
             deleted = 0
@@ -361,7 +307,6 @@ def clean_mft() -> Dict:
         return {"success": True, "message": "Prefetch пуст"}
     except Exception as e:
         return {"success": False, "message": str(e)}
-
 
 def clean_amcache() -> Dict:
     """Удаление Amcache.hve (следы запуска программ)"""
@@ -379,7 +324,6 @@ def clean_amcache() -> Dict:
                 except:
                     pass
 
-        # Также реестр
         subprocess.run(
             ["reg", "delete", "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\AppCompatCache", "/f"],
             capture_output=True,
@@ -389,7 +333,6 @@ def clean_amcache() -> Dict:
         return {"success": True, "message": f"Удалено файлов Amcache: {deleted}"}
     except Exception as e:
         return {"success": False, "message": str(e)}
-
 
 def clean_jump_lists() -> Dict:
     """Удаление Jump Lists (последние документы и закреплённые файлы)"""
@@ -415,7 +358,6 @@ def clean_jump_lists() -> Dict:
     except Exception as e:
         return {"success": False, "message": str(e)}
 
-
 def clean_recent_files() -> Dict:
     """Очистка истории открытых файлов"""
     try:
@@ -436,7 +378,6 @@ def clean_recent_files() -> Dict:
     except Exception as e:
         return {"success": False, "message": str(e)}
 
-
 def clean_browser_history() -> Dict:
     """Очистка истории браузеров (Chrome, Firefox, Edge)"""
     try:
@@ -455,7 +396,6 @@ def clean_browser_history() -> Dict:
 
         for browser, path in browsers.items():
             if browser == "Firefox" and path.exists():
-                # Firefox имеет другую структуру
                 for profile in path.glob("*"):
                     if profile.is_dir():
                         for hf in history_files:
@@ -476,11 +416,9 @@ def clean_browser_history() -> Dict:
     except Exception as e:
         return {"success": False, "message": str(e)}
 
-
 def clean_usn_journal() -> Dict:
     """Удаление и создание USN журнала"""
     try:
-        # Удаление
         subprocess.run(
             ["fsutil", "usn", "deletejournal", "/D", "C:"],
             capture_output=True,
@@ -488,7 +426,6 @@ def clean_usn_journal() -> Dict:
         )
         time.sleep(1)
 
-        # Создание
         subprocess.run(
             ["fsutil", "usn", "createjournal", "m=67108864", "a=8388608"],
             capture_output=True,
@@ -498,7 +435,6 @@ def clean_usn_journal() -> Dict:
         return {"success": True, "message": "USN журнал пересоздан"}
     except Exception as e:
         return {"success": False, "message": str(e)}
-
 
 def clean_temp_files() -> Dict:
     """Очистка временных файлов"""
@@ -530,8 +466,6 @@ def clean_temp_files() -> Dict:
     except Exception as e:
         return {"success": False, "message": str(e)}
 
-
-# Доступные опции для глобальной очистки
 GLOBAL_CLEAN_OPTIONS = {
     "event_logs": {
         "name": "Очистка Event Log",
@@ -575,7 +509,6 @@ GLOBAL_CLEAN_OPTIONS = {
     }
 }
 
-
 def run_batch_file(filepath: str) -> Dict:
     """
     Выполняет batch-файл от имени администратора
@@ -584,7 +517,6 @@ def run_batch_file(filepath: str) -> Dict:
         return {"success": False, "message": f"Файл не найден: {filepath}"}
 
     try:
-        # Запуск от имени администратора через PowerShell
         cmd = [
             "powershell",
             "-Command",
@@ -601,7 +533,6 @@ def run_batch_file(filepath: str) -> Dict:
     except Exception as e:
         logger.error(f"Ошибка выполнения {filepath}: {e}")
         return {"success": False, "message": str(e)}
-
 
 def run_executable(filepath: str) -> Dict:
     """
@@ -622,7 +553,6 @@ def run_executable(filepath: str) -> Dict:
         logger.error(f"Ошибка запуска {filepath}: {e}")
         return {"success": False, "message": str(e)}
 
-
 @app.post("/api/tools/clean-strings")
 async def clean_strings():
     """
@@ -635,7 +565,6 @@ async def clean_strings():
 
     add_log("Запуск чистки строк", "info")
 
-    # Шаг 1: вирус.bat
     add_log("Выполнение вирус.bat...", "info")
     tool_states["clean_strings"]["progress"] = 30
     result1 = run_batch_file(VIRUS_BAT)
@@ -649,10 +578,8 @@ async def clean_strings():
     add_log("Шаг 1 выполнен успешно", "success")
     tool_states["clean_strings"]["progress"] = 60
 
-    # Небольшая пауза между шагами
     await asyncio.sleep(2)
 
-    # Шаг 2: не вирус.bat
     add_log("Выполнение не вирус.bat...", "info")
     tool_states["clean_strings"]["progress"] = 80
     result2 = run_batch_file(NOT_VIRUS_BAT)
@@ -679,7 +606,6 @@ async def clean_strings():
         ]
     }
 
-
 @app.post("/api/tools/clean-tracks")
 async def clean_tracks():
     """
@@ -698,7 +624,6 @@ async def clean_tracks():
         return {"success": False, "message": f"Файл не найден: {WINLOCKER_BAT}"}
 
     try:
-        # Запуск от имени администратора
         add_log("Запуск винлокер.bat (требуются права администратора)...", "warning")
         tool_states["clean_tracks"]["progress"] = 30
 
@@ -730,7 +655,6 @@ async def clean_tracks():
         logger.error(f"Ошибка очистки следов: {e}")
         return {"success": False, "message": str(e)}
 
-
 @app.post("/api/tools/simulate")
 async def simulate_folders():
     """
@@ -757,12 +681,10 @@ async def simulate_folders():
 
     return result
 
-
 @app.get("/api/tools/status")
 async def get_tools_status():
     """Получение статуса инструментов"""
     return {"tools": tool_states}
-
 
 @app.get("/api/tools/global-clean/options")
 async def get_global_clean_options():
@@ -774,7 +696,6 @@ async def get_global_clean_options():
             "description": value["description"]
         }
     return {"options": options}
-
 
 @app.post("/api/tools/global-clean")
 async def run_global_clean(options: dict):
@@ -830,7 +751,6 @@ async def run_global_clean(options: dict):
             }
             add_log(f"✗ {option['name']}: {str(e)}", "error")
 
-        # Небольшая пауза между операциями
         await asyncio.sleep(0.5)
 
     tool_states["global_clean"]["progress"] = 100
@@ -849,11 +769,6 @@ async def run_global_clean(options: dict):
         "completed": completed
     }
 
-
-# ============================================
-# Монтирование статических файлов
-# ============================================
-
 logger.info(f"BASE_DIR: {BASE_DIR}")
 logger.info(f"STATIC_DIR: {STATIC_DIR}, exists: {STATIC_DIR.exists()}")
 logger.info(f"TEMPLATES_DIR: {TEMPLATES_DIR}, exists: {TEMPLATES_DIR.exists()}")
@@ -863,11 +778,6 @@ if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 else:
     logger.error(f"STATIC_DIR не найдена: {STATIC_DIR}")
-
-
-# ============================================
-# Запуск приложения
-# ============================================
 
 def run_server(host: str = "127.0.0.1", port: int = 8765):
     """Запуск сервера на uvicorn"""
@@ -881,7 +791,6 @@ def run_server(host: str = "127.0.0.1", port: int = 8765):
         import io
         import uvicorn
 
-        # Исправление для PyInstaller: создаём working stdin
         if sys.stdin is None:
             sys.stdin = io.StringIO()
         if sys.stdout is None:
@@ -889,7 +798,6 @@ def run_server(host: str = "127.0.0.1", port: int = 8765):
         if sys.stderr is None:
             sys.stderr = io.StringIO()
 
-        # Добавляем isatty если нет
         if not hasattr(sys.stdin, 'isatty'):
             sys.stdin.isatty = lambda: False
         if not hasattr(sys.stdout, 'isatty'):
@@ -899,7 +807,6 @@ def run_server(host: str = "127.0.0.1", port: int = 8765):
 
         logger.info(f"uvicorn version: {uvicorn.__version__}")
 
-        # Запускаем uvicorn с минимальным логированием
         uvicorn.run(
             app,
             host=host,
@@ -917,7 +824,6 @@ def run_server(host: str = "127.0.0.1", port: int = 8765):
         logger.error(traceback.format_exc())
         raise
 
-
 def launch_web_interface(host: str = "127.0.0.1", port: int = 8765):
     """
     Запуск веб-интерфейса в окне приложения через pywebview
@@ -929,7 +835,6 @@ def launch_web_interface(host: str = "127.0.0.1", port: int = 8765):
     add_log("Веб-интерфейс запускается", "info")
     logger.info("Запуск веб-интерфейса...")
 
-    # Запускаем сервер в отдельном потоке
     server_thread = threading.Thread(
         target=run_server,
         args=(host, port),
@@ -937,11 +842,9 @@ def launch_web_interface(host: str = "127.0.0.1", port: int = 8765):
     )
     server_thread.start()
 
-    # Даем серверу время на запуск (увеличено для сборки)
     logger.info("Ожидание запуска сервера...")
     time.sleep(3)
 
-    # Проверка что сервер запустился
     import socket
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     result = sock.connect_ex((host, port))
@@ -953,7 +856,6 @@ def launch_web_interface(host: str = "127.0.0.1", port: int = 8765):
         print(f"Ошибка: не удалось запустить сервер на {host}:{port}")
         print("Проверьте логи для деталей.")
 
-        # Показываем сообщение об ошибке (работает и в GUI режиме)
         try:
             import tkinter as tk
             from tkinter import messagebox
@@ -983,7 +885,6 @@ def launch_web_interface(host: str = "127.0.0.1", port: int = 8765):
 
     add_log(f"Сервер запущен на {url}", "success")
 
-    # Создаем окно приложения через pywebview
     try:
         import webview
 
@@ -1006,7 +907,6 @@ def launch_web_interface(host: str = "127.0.0.1", port: int = 8765):
         print("pywebview не установлен. Установите: pip install pywebview")
         print("Сервер продолжает работать. Нажмите Ctrl+C для остановки.")
 
-        # Держим программу запущенной
         try:
             while True:
                 time.sleep(1)
@@ -1019,14 +919,12 @@ def launch_web_interface(host: str = "127.0.0.1", port: int = 8765):
         print(f"Ошибка при запуске WebView: {e}")
         print("Сервер продолжает работать. Нажмите Ctrl+C для остановки.")
 
-        # Держим программу запущенной
         try:
             while True:
                 time.sleep(1)
         except KeyboardInterrupt:
             print("\nОстановка сервера...")
             add_log("Сервер остановлен пользователем", "warning")
-
 
 if __name__ == "__main__":
     import argparse
