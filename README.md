@@ -5,8 +5,7 @@
 ![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-009688?style=for-the-badge&logo=fastapi&logoColor=white)
 ![PyInstaller](https://img.shields.io/badge/PyInstaller-6.16-1F8476?style=for-the-badge&logo=python&logoColor=white)
-![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)
-
+![License](https://img.shields.io/badge/License-AGPLv3-blue?style=for-the-badge)
 ---
 
 ## ✨ Особенности
